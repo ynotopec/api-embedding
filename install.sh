@@ -5,58 +5,149 @@ PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_NAME="$(basename "$PROJECT_DIR")"
 VENV_DIR="${VENV_DIR:-$HOME/venv/$PROJECT_NAME}"
 
-cd "$PROJECT_DIR"
+VLLM_VERSION="${VLLM_VERSION:-0.19.1}"
+CUDA_VERSION="${CUDA_VERSION:-130}"
 
-echo "==> Project: $PROJECT_NAME"
-echo "==> Venv:    $VENV_DIR"
+echo "==> Project:      $PROJECT_DIR"
+echo "==> Project name: $PROJECT_NAME"
+echo "==> Venv:         $VENV_DIR"
+echo "==> vLLM:         $VLLM_VERSION + cu$CUDA_VERSION"
 
-if ! command -v python3 >/dev/null 2>&1; then
-  echo "ERROR: python3 is required"
+need_cmd() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+echo "==> Installing system dependencies..."
+if need_cmd apt-get; then
+  sudo apt-get update
+  sudo apt-get install -y \
+    curl \
+    ca-certificates \
+    jq \
+    git \
+    build-essential \
+    python3 \
+    python3-venv \
+    python3-dev
+fi
+
+echo "==> Installing/upgrading uv..."
+if ! need_cmd uv; then
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  export PATH="$HOME/.local/bin:$PATH"
+else
+  uv self update || true
+fi
+
+if ! need_cmd uv; then
+  echo "ERROR: uv not found after installation."
+  echo "Add ~/.local/bin to PATH or reopen your shell."
   exit 1
 fi
 
-if ! command -v uv >/dev/null 2>&1; then
-  echo "==> Installing uv user-wide"
-  python3 -m pip install --user -U uv
-  export PATH="$HOME/.local/bin:$PATH"
-fi
+echo "==> Detecting architecture..."
+ARCH="$(uname -m)"
+case "$ARCH" in
+  x86_64)
+    WHEEL_ARCH="x86_64"
+    ;;
+  aarch64|arm64)
+    WHEEL_ARCH="aarch64"
+    ;;
+  *)
+    echo "ERROR: unsupported architecture: $ARCH"
+    exit 1
+    ;;
+esac
 
-echo "==> Creating/upgrading venv"
-uv venv "$VENV_DIR" --python python3
+VLLM_WHEEL="https://github.com/vllm-project/vllm/releases/download/v${VLLM_VERSION}/vllm-${VLLM_VERSION}+cu${CUDA_VERSION}-cp38-abi3-manylinux_2_35_${WHEEL_ARCH}.whl"
+
+echo "==> Architecture: $ARCH -> $WHEEL_ARCH"
+echo "==> Wheel:        $VLLM_WHEEL"
+
+mkdir -p "$(dirname "$VENV_DIR")"
+
+echo "==> Creating/upgrading venv..."
+uv venv "$VENV_DIR" --python 3.11
 
 # shellcheck disable=SC1091
 source "$VENV_DIR/bin/activate"
 
-echo "==> Upgrading packaging tools"
-uv pip install -U pip setuptools wheel
+echo "==> Upgrading base tooling..."
+uv pip install -U pip setuptools wheel packaging
 
-# Load .env only for install choices
-if [[ -f "$PROJECT_DIR/.env" ]]; then
-  set -a
-  # shellcheck disable=SC1091
-  source "$PROJECT_DIR/.env"
-  set +a
-fi
+echo "==> Installing vLLM CUDA ${CUDA_VERSION}..."
+export UV_INDEX_STRATEGY=unsafe-best-match
+export UV_PRERELEASE=allow
+export UV_TORCH_BACKEND="cu${CUDA_VERSION}"
 
-BACKEND="${BACKEND:-vllm}"
-INSTALL_VLLM="${INSTALL_VLLM:-1}"
-VLLM_VERSION="${VLLM_VERSION:-}"
+uv pip install -U \
+  "$VLLM_WHEEL" \
+  --torch-backend "cu${CUDA_VERSION}" \
+  --index-strategy unsafe-best-match \
+  --prerelease allow \
+  --extra-index-url "https://download.pytorch.org/whl/cu${CUDA_VERSION}" \
+  --extra-index-url "https://pypi.org/simple"
 
-echo "==> Installing common fallback server deps"
-uv pip install -U -r requirements-flagembedding.txt
+echo "==> Installing helper packages..."
+uv pip install -U \
+  "huggingface_hub[cli]" \
+  hf_transfer \
+  requests \
+  openai \
+  orjson
 
-if [[ "$INSTALL_VLLM" == "1" || "$BACKEND" == "vllm" ]]; then
-  echo "==> Installing/upgrading vLLM"
-  if [[ -n "$VLLM_VERSION" ]]; then
-    uv pip install -U "vllm==$VLLM_VERSION"
-  else
-    uv pip install -U vllm
-  fi
-fi
+echo "==> Checking dependency versions..."
+python - <<'PY'
+import importlib.metadata as md
+
+packages = [
+    "torch",
+    "vllm",
+    "openai",
+    "orjson",
+    "cuda-bindings",
+    "cuda-python",
+    "nvidia-cutlass-dsl",
+    "nvidia-cutlass-dsl-libs-base",
+    "flashinfer-python",
+    "flashinfer-jit-cache",
+]
+
+for pkg in packages:
+    try:
+        print(f"{pkg}: {md.version(pkg)}")
+    except md.PackageNotFoundError:
+        print(f"{pkg}: not installed")
+PY
+
+echo "==> Checking Python imports..."
+python - <<'PY'
+import torch
+import vllm
+import openai
+import orjson
+
+print("torch:", torch.__version__)
+print("torch cuda:", torch.version.cuda)
+print("cuda available:", torch.cuda.is_available())
+print("vllm:", vllm.__version__)
+print("openai:", openai.__version__)
+print("orjson: ok")
+
+if torch.cuda.is_available():
+    print("gpu count:", torch.cuda.device_count())
+    for i in range(torch.cuda.device_count()):
+        print(f"gpu {i}:", torch.cuda.get_device_name(i))
+PY
+
+echo "==> Checking vLLM OpenAI API server CLI..."
+python -m vllm.entrypoints.openai.api_server --help >/dev/null
 
 echo
 echo "✅ Install OK"
 echo
 echo "Next:"
 echo "  cp .env.example .env"
-echo "  source run.sh 0.0.0.0 8000"
+echo "  nano .env"
+echo "  ./run.sh 0.0.0.0 8001"
