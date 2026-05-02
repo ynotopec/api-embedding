@@ -15,7 +15,7 @@ HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", "8000"))
 
 MODEL_ID = os.getenv("MODEL_ID", "BAAI/bge-m3")
-MODEL_ALIAS = os.getenv("MODEL_ALIAS", "")
+MODEL_ALIAS = os.getenv("MODEL_ALIAS", "BAAI/bge-m3")
 SERVED_MODEL_NAME = os.getenv("SERVED_MODEL_NAME", MODEL_ALIAS or MODEL_ID)
 API_KEY = os.getenv("API_KEY", "")
 
