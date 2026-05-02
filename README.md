@@ -141,6 +141,25 @@ curl -s http://127.0.0.1:8001/pooling \
 
 Selon la version vLLM, le schéma exact retourné par `/pooling` peut différer. Pour dense embeddings OpenAI-compatible, privilégier `/v1/embeddings`.
 
+
+## Alias de modèle (MODEL_ALIAS)
+
+Tu peux définir un alias retourné par l'API (et visible dans `/v1/models`, `/health`, `/`).
+
+Exemple dans `.env` :
+
+```bash
+MODEL_ID=BAAI/bge-m3
+MODEL_ALIAS=BAAI/bge-m3
+# SERVED_MODEL_NAME=mon-alias-prioritaire
+```
+
+Priorité appliquée par le serveur :
+
+1. `SERVED_MODEL_NAME` (si défini)
+2. `MODEL_ALIAS`
+3. `MODEL_ID`
+
 ## Config recommandée DGX Spark
 
 Config safe si d’autres modèles tournent déjà :
