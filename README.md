@@ -1,58 +1,77 @@
 # api-embedding
 
-Serveur vLLM CUDA 13 pour `BAAI/bge-m3`, exposé via :
-
-- `/v1/embeddings` : API OpenAI-compatible pour dense embeddings
-- `/pooling` : API vLLM pooling, utile pour les sorties spécifiques type multi-vector
-
-BGE-M3 :
-- dimension dense : 1024
-- max length : 8192 tokens
-- multilingue
-- dense / sparse / ColBERT côté modèle
+Lance un modèle d'embeddings compatible avec vLLM et expose son API OpenAI.
+Le lanceur ne suppose ni architecture, ni longueur de contexte, ni précision :
+ces choix sont laissés à vLLM et aux métadonnées du modèle.
 
 ## Installation
 
 ```bash
 chmod +x install.sh run.sh
 ./install.sh
-
 cp .env.example .env
-nano .env
 ```
 
-Le venv est créé automatiquement dans :
+Le venv est créé dans `~/venv/<nom-du-projet>` par défaut.
 
-```bash
-~/venv/<basename project dir>
+## Configuration minimale
+
+`MODEL_ID` est le seul paramètre applicatif obligatoire :
+
+```dotenv
+MODEL_ID=BAAI/bge-m3
 ```
 
-Exemple :
+Il peut s'agir d'un identifiant Hugging Face ou d'un chemin local accepté par
+vLLM. `API_KEY`, `MODEL_ALIAS` et `SERVED_MODEL_NAME` sont optionnels.
+`SERVED_MODEL_NAME` est prioritaire sur `MODEL_ALIAS`; sans alias, vLLM expose
+directement `MODEL_ID`.
 
-```bash
-/home/ailab/api-embedding
-/home/ailab/venv/api-embedding
-```
-
-## Lancement
+Le serveur se lance ensuite avec :
 
 ```bash
 ./run.sh
 ```
 
-ou :
+L'hôte et le port peuvent être passés en arguments (valeurs par défaut :
+`0.0.0.0` et `8001`) :
 
 ```bash
-./run.sh 0.0.0.0 8001
+./run.sh 127.0.0.1 8000
 ```
 
-## Healthcheck
+## Options vLLM
 
-```bash
-curl -i http://127.0.0.1:8001/health
+Aucune option propre à un modèle n'est forcée. Les variables suivantes ne
+sont transmises à vLLM que lorsqu'elles sont explicitement renseignées :
+
+- `RUNNER`
+- `DTYPE`
+- `MAX_MODEL_LEN`
+- `GPU_MEMORY_UTILIZATION`
+- `MAX_NUM_SEQS`
+- `MAX_NUM_BATCHED_TOKENS`
+- `QUANTIZATION`
+- `KV_CACHE_DTYPE`
+
+Les drapeaux `TRUST_REMOTE_CODE`, `ENFORCE_EAGER` et
+`DISABLE_LOG_REQUESTS` sont activés uniquement avec la valeur `1`. Cela permet
+de conserver les valeurs par défaut de vLLM et de ne configurer que ce dont un
+modèle ou un déploiement a réellement besoin.
+
+Exemple de réglages spécifiques, si le modèle les requiert :
+
+```dotenv
+MODEL_ID=BAAI/bge-m3
+RUNNER=pooling
+MAX_MODEL_LEN=8192
+GPU_MEMORY_UTILIZATION=0.10
 ```
 
-## Test OpenAI-compatible `/v1/embeddings`
+## Appel OpenAI-compatible
+
+Le champ `model` est obligatoire dans le protocole OpenAI. Sa valeur doit être
+l'alias configuré, ou `MODEL_ID` lorsqu'aucun alias n'est défini.
 
 ```bash
 curl -s http://127.0.0.1:8001/v1/embeddings \
@@ -60,45 +79,13 @@ curl -s http://127.0.0.1:8001/v1/embeddings \
   -H 'Content-Type: application/json' \
   -d '{
     "model": "BAAI/bge-m3",
-    "input": [
-      "Paris est la capitale de la France.",
-      "CUDA accélère les calculs GPU."
-    ],
-    "encoding_format": "float"
-  }' | jq '.data[0].embedding | length'
+    "input": ["Premier texte", "Deuxième texte"]
+  }' | jq
 ```
 
-Résultat attendu :
+Avec le client Python OpenAI :
 
-```text
-1024
-```
-
-Voir un extrait :
-
-```bash
-curl -s http://127.0.0.1:8001/v1/embeddings \
-  -H 'Authorization: Bearer change-me' \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "model": "BAAI/bge-m3",
-    "input": "Paris est la capitale de la France.",
-    "encoding_format": "float"
-  }' | jq '{
-    model,
-    object,
-    dim: (.data[0].embedding | length),
-    first_values: .data[0].embedding[0:5],
-    usage
-  }'
-```
-
-## Test avec client Python OpenAI
-
-```bash
-source ~/venv/$(basename "$PWD")/bin/activate
-
-python - <<'PY'
+```python
 from openai import OpenAI
 
 client = OpenAI(
@@ -106,132 +93,18 @@ client = OpenAI(
     api_key="change-me",
 )
 
-resp = client.embeddings.create(
+response = client.embeddings.create(
     model="BAAI/bge-m3",
-    input=[
-        "Paris est la capitale de la France.",
-        "CUDA accélère les calculs GPU.",
-    ],
-    encoding_format="float",
+    input=["Premier texte", "Deuxième texte"],
 )
-
-print("count:", len(resp.data))
-print("dim:", len(resp.data[0].embedding))
-print("first:", resp.data[0].embedding[:5])
-print("usage:", resp.usage)
-PY
+print(len(response.data), len(response.data[0].embedding))
 ```
 
-## Test `/pooling`
+La route `/pooling` reste disponible lorsque le modèle et le runner vLLM la
+prennent en charge. Son format dépend de la version de vLLM et du modèle.
 
-`/pooling` est l’API vLLM utile pour les modèles pooling et les usages plus spécifiques que l’API OpenAI standard.
+## Variables Hugging Face
 
-```bash
-curl -s http://127.0.0.1:8001/pooling \
-  -H 'Authorization: Bearer change-me' \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "model": "BAAI/bge-m3",
-    "input": [
-      "Paris est la capitale de la France.",
-      "CUDA accélère les calculs GPU."
-    ]
-  }' | jq
-```
-
-Selon la version vLLM, le schéma exact retourné par `/pooling` peut différer. Pour dense embeddings OpenAI-compatible, privilégier `/v1/embeddings`.
-
-
-## Alias de modèle (MODEL_ALIAS)
-
-Tu peux définir un alias retourné par l'API (et visible dans `/v1/models`, `/health`, `/`).
-
-Exemple dans `.env` :
-
-```bash
-MODEL_ID=BAAI/bge-m3
-MODEL_ALIAS=BAAI/bge-m3
-# SERVED_MODEL_NAME=mon-alias-prioritaire
-```
-
-Priorité appliquée par le serveur :
-
-1. `SERVED_MODEL_NAME` (si défini)
-2. `MODEL_ALIAS`
-3. `MODEL_ID`
-
-## Config recommandée DGX Spark
-
-Config safe si d’autres modèles tournent déjà :
-
-```bash
-MODEL_ID=BAAI/bge-m3
-GPU_MEMORY_UTILIZATION=0.10
-MAX_MODEL_LEN=8192
-MAX_NUM_SEQS=64
-MAX_NUM_BATCHED_TOKENS=32768
-ENFORCE_EAGER=0
-```
-
-Si mémoire insuffisante :
-
-```bash
-GPU_MEMORY_UTILIZATION=0.08
-MAX_MODEL_LEN=4096
-MAX_NUM_SEQS=32
-MAX_NUM_BATCHED_TOKENS=16384
-```
-
-Si GPU libre et besoin de débit :
-
-```bash
-GPU_MEMORY_UTILIZATION=0.20
-MAX_MODEL_LEN=8192
-MAX_NUM_SEQS=128
-MAX_NUM_BATCHED_TOKENS=65536
-```
-
-## Sparse / ColBERT
-
-BGE-M3 sait produire dense, sparse et ColBERT, mais l’API OpenAI `/v1/embeddings` expose surtout le dense embedding classique.
-
-Pour LightRAG/OpenWebUI classique :
-
-```text
-embedding endpoint = http://host:8001/v1/embeddings
-model = BAAI/bge-m3
-dimension = 1024
-```
-
-Pour sparse / ColBERT, il faut vérifier le schéma `/pooling` supporté par ta version vLLM ou utiliser directement FlagEmbedding si tu veux explicitement récupérer :
-
-- `dense_vecs`
-- `lexical_weights`
-- `colbert_vecs`
-
-## Voir la VRAM
-
-```bash
-nvidia-smi
-```
-
-ou :
-
-```bash
-nvidia-smi --query-compute-apps=pid,process_name,used_memory \
-  --format=csv
-```
-
-## systemd
-
-Adapter `User`, `WorkingDirectory`, `VENV_DIR`, et le port si besoin.
-
-```bash
-sudo cp systemd/api-embedding.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now api-embedding
-sudo journalctl -u api-embedding -f
-```
-
-[1]: https://docs.vllm.ai/en/v0.12.0/examples/online_serving/pooling/ "Pooling models - vLLM"
-[2]: https://huggingface.co/BAAI/bge-m3 "BAAI/bge-m3 · Hugging Face"
+`HF_HOME`, `HUGGINGFACE_HUB_CACHE`, `HF_HUB_ENABLE_HF_TRANSFER` et
+`TOKENIZERS_PARALLELISM` peuvent être surchargées. Pour un modèle privé,
+configurer aussi `HF_TOKEN`.
