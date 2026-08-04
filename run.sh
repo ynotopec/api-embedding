@@ -15,24 +15,17 @@ if [[ -f "$PROJECT_DIR/.env" ]]; then
   set +a
 fi
 
-MODEL_ID="${MODEL_ID:-BAAI/bge-m3}"
-MODEL_ALIAS="${MODEL_ALIAS:-BAAI/bge-m3}"
+MODEL_ID="${MODEL_ID:-}"
+MODEL_ALIAS="${MODEL_ALIAS:-}"
 SERVED_MODEL_NAME="${SERVED_MODEL_NAME:-$MODEL_ALIAS}"
 
-if [[ -z "$SERVED_MODEL_NAME" ]]; then
-  SERVED_MODEL_NAME="$MODEL_ID"
+if [[ -z "$MODEL_ID" ]]; then
+  echo "ERROR: MODEL_ID is required."
+  echo "Set it in $PROJECT_DIR/.env or export it before starting the server."
+  exit 1
 fi
 
 API_KEY="${API_KEY:-}"
-
-DTYPE="${DTYPE:-auto}"
-MAX_MODEL_LEN="${MAX_MODEL_LEN:-8192}"
-GPU_MEMORY_UTILIZATION="${GPU_MEMORY_UTILIZATION:-0.10}"
-MAX_NUM_SEQS="${MAX_NUM_SEQS:-64}"
-MAX_NUM_BATCHED_TOKENS="${MAX_NUM_BATCHED_TOKENS:-32768}"
-
-QUANTIZATION="${QUANTIZATION:-}"
-KV_CACHE_DTYPE="${KV_CACHE_DTYPE:-}"
 
 export HF_HOME="${HF_HOME:-$PROJECT_DIR/.cache/huggingface}"
 export HUGGINGFACE_HUB_CACHE="${HUGGINGFACE_HUB_CACHE:-$HF_HOME/hub}"
@@ -58,46 +51,53 @@ ARGS=(
   --model "$MODEL_ID"
   --host "$HOST"
   --port "$PORT"
-  --runner pooling
-  --served-model-name "$SERVED_MODEL_NAME"
-  --dtype "$DTYPE"
-  --max-model-len "$MAX_MODEL_LEN"
-  --gpu-memory-utilization "$GPU_MEMORY_UTILIZATION"
-  --max-num-seqs "$MAX_NUM_SEQS"
-  --max-num-batched-tokens "$MAX_NUM_BATCHED_TOKENS"
-  --trust-remote-code
 )
+
+if [[ -n "$SERVED_MODEL_NAME" ]]; then
+  ARGS+=(--served-model-name "$SERVED_MODEL_NAME")
+fi
 
 if [[ -n "$API_KEY" ]]; then
   ARGS+=(--api-key "$API_KEY")
 fi
 
+OPTIONAL_VALUE_ARGS=(
+  "RUNNER:--runner"
+  "DTYPE:--dtype"
+  "MAX_MODEL_LEN:--max-model-len"
+  "GPU_MEMORY_UTILIZATION:--gpu-memory-utilization"
+  "MAX_NUM_SEQS:--max-num-seqs"
+  "MAX_NUM_BATCHED_TOKENS:--max-num-batched-tokens"
+  "QUANTIZATION:--quantization"
+  "KV_CACHE_DTYPE:--kv-cache-dtype"
+)
+
+for mapping in "${OPTIONAL_VALUE_ARGS[@]}"; do
+  variable="${mapping%%:*}"
+  flag="${mapping#*:}"
+  value="${!variable:-}"
+  if [[ -n "$value" ]]; then
+    ARGS+=("$flag" "$value")
+  fi
+done
+
+if [[ "${TRUST_REMOTE_CODE:-0}" == "1" ]]; then
+  ARGS+=(--trust-remote-code)
+fi
 if [[ "${ENFORCE_EAGER:-0}" == "1" ]]; then
   ARGS+=(--enforce-eager)
 fi
-
-if [[ "${DISABLE_LOG_REQUESTS:-1}" == "1" ]]; then
+if [[ "${DISABLE_LOG_REQUESTS:-0}" == "1" ]]; then
   ARGS+=(--no-enable-log-requests)
-fi
-
-if [[ -n "$QUANTIZATION" ]]; then
-  ARGS+=(--quantization "$QUANTIZATION")
-fi
-
-if [[ -n "$KV_CACHE_DTYPE" ]]; then
-  ARGS+=(--kv-cache-dtype "$KV_CACHE_DTYPE")
 fi
 
 echo "==> Starting vLLM embeddings"
 echo "    project: $PROJECT_NAME"
 echo "    venv:    $VENV_DIR"
 echo "    model:   $MODEL_ID"
-echo "    name:    $SERVED_MODEL_NAME"
+echo "    name:    ${SERVED_MODEL_NAME:-$MODEL_ID}"
 echo "    url:     http://$HOST:$PORT"
 echo "    api:     POST /v1/embeddings"
-echo "    api:     POST /pooling"
-echo "    mem:     GPU_MEMORY_UTILIZATION=$GPU_MEMORY_UTILIZATION"
-echo "    limits:  MAX_MODEL_LEN=$MAX_MODEL_LEN MAX_NUM_SEQS=$MAX_NUM_SEQS MAX_NUM_BATCHED_TOKENS=$MAX_NUM_BATCHED_TOKENS"
 echo
 
 exec python -m vllm.entrypoints.openai.api_server "${ARGS[@]}"
