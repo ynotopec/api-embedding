@@ -12,7 +12,7 @@ chmod +x install.sh run.sh
 cp .env.example .env
 ```
 
-Le venv est créé dans `~/venv/<nom-du-projet>` par défaut.
+Le venv est créé avec Python 3.12 dans `~/venv/<nom-du-projet>` par défaut.
 
 ## Configuration minimale
 
@@ -105,6 +105,8 @@ prennent en charge. Son format dépend de la version de vLLM et du modèle.
 
 ## Variables Hugging Face
 
-`HF_HOME`, `HUGGINGFACE_HUB_CACHE`, `HF_HUB_ENABLE_HF_TRANSFER` et
-`TOKENIZERS_PARALLELISM` peuvent être surchargées. Pour un modèle privé,
+`HF_HOME` et `HUGGINGFACE_HUB_CACHE` ne sont pas définies par le lanceur :
+Hugging Face utilise donc son répertoire de cache par défaut, sauf si ces
+variables sont déjà configurées dans l’environnement. `HF_HUB_ENABLE_HF_TRANSFER`
+et `TOKENIZERS_PARALLELISM` peuvent aussi être surchargées. Pour un modèle privé,
 configurer aussi `HF_TOKEN`.

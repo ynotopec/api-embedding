@@ -105,7 +105,7 @@ echo "==> Wheel:        $VLLM_WHEEL"
 mkdir -p "$(dirname "$VENV_DIR")"
 
 echo "==> Creating/upgrading venv..."
-uv venv "$VENV_DIR" --python 3.11
+uv venv "$VENV_DIR" --python 3.12
 
 # shellcheck disable=SC1091
 source "$VENV_DIR/bin/activate"
