@@ -17,10 +17,45 @@ need_cmd() {
   command -v "$1" >/dev/null 2>&1
 }
 
-echo "==> Installing system dependencies..."
-if need_cmd apt-get; then
-  sudo apt-get update
-  sudo apt-get install -y \
+install_system_deps() {
+  if ! need_cmd apt-get; then
+    echo "==> apt-get not found; skipping system dependency installation."
+    return
+  fi
+
+  local missing=()
+  for cmd in curl jq git python3; do
+    if ! need_cmd "$cmd"; then
+      missing+=("$cmd")
+    fi
+  done
+
+  if (( ${#missing[@]} == 0 )); then
+    echo "==> System dependencies appear to be installed; skipping apt-get."
+    return
+  fi
+
+  echo "==> Missing system commands: ${missing[*]}"
+  echo "==> Set INSTALL_SYSTEM_DEPS=1 to install apt packages automatically."
+
+  if [[ "${INSTALL_SYSTEM_DEPS:-0}" != "1" ]]; then
+    echo "ERROR: system dependencies are missing, but automatic apt install is disabled."
+    echo "Install them manually or rerun with INSTALL_SYSTEM_DEPS=1."
+    exit 1
+  fi
+
+  local apt_cmd=(apt-get)
+  if [[ "${EUID}" -ne 0 ]]; then
+    if ! need_cmd sudo; then
+      echo "ERROR: sudo is required for INSTALL_SYSTEM_DEPS=1 when not running as root."
+      exit 1
+    fi
+    apt_cmd=(sudo apt-get)
+  fi
+
+  echo "==> Installing system dependencies with ${apt_cmd[*]}..."
+  "${apt_cmd[@]}" update
+  "${apt_cmd[@]}" install -y \
     curl \
     ca-certificates \
     jq \
@@ -29,7 +64,9 @@ if need_cmd apt-get; then
     python3 \
     python3-venv \
     python3-dev
-fi
+}
+
+install_system_deps
 
 echo "==> Installing/upgrading uv..."
 if ! need_cmd uv; then
@@ -101,7 +138,19 @@ uv pip install -U \
 # upgrade from replacing the huggingface-hub version required by transformers,
 # then fail here with a useful dependency report rather than later at startup.
 echo "==> Checking dependency compatibility..."
-uv pip check
+PIP_CHECK_OUTPUT="$(mktemp)"
+if ! uv pip check >"$PIP_CHECK_OUTPUT" 2>&1; then
+  cat "$PIP_CHECK_OUTPUT"
+  if grep -q '^Found 1 incompatibility$' "$PIP_CHECK_OUTPUT" \
+    && grep -q '^The package `nvidia-cusparselt-cu13` was built for a different platform$' "$PIP_CHECK_OUTPUT"; then
+    echo "WARNING: ignoring uv pip check platform warning for nvidia-cusparselt-cu13."
+    echo "This package is pulled by CUDA 13 wheels and is not required on every platform."
+  else
+    rm -f "$PIP_CHECK_OUTPUT"
+    exit 1
+  fi
+fi
+rm -f "$PIP_CHECK_OUTPUT"
 
 echo "==> Checking dependency versions..."
 python - <<'PY'
