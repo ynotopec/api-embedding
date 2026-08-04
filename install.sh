@@ -91,11 +91,17 @@ uv pip install -U \
 
 echo "==> Installing helper packages..."
 uv pip install -U \
-  "huggingface_hub[cli]" \
+  "huggingface_hub[cli]>=0.34.0,<1.0" \
   hf_transfer \
   requests \
   openai \
   orjson
+
+# `uv pip install` resolves each invocation independently. Keep the helper
+# upgrade from replacing the huggingface-hub version required by transformers,
+# then fail here with a useful dependency report rather than later at startup.
+echo "==> Checking dependency compatibility..."
+uv pip check
 
 echo "==> Checking dependency versions..."
 python - <<'PY'
@@ -104,6 +110,8 @@ import importlib.metadata as md
 packages = [
     "torch",
     "vllm",
+    "transformers",
+    "huggingface-hub",
     "openai",
     "orjson",
     "cuda-bindings",
@@ -125,6 +133,8 @@ echo "==> Checking Python imports..."
 python - <<'PY'
 import torch
 import vllm
+import transformers
+import huggingface_hub
 import openai
 import orjson
 
@@ -132,6 +142,8 @@ print("torch:", torch.__version__)
 print("torch cuda:", torch.version.cuda)
 print("cuda available:", torch.cuda.is_available())
 print("vllm:", vllm.__version__)
+print("transformers:", transformers.__version__)
+print("huggingface-hub:", huggingface_hub.__version__)
 print("openai:", openai.__version__)
 print("orjson: ok")
 
