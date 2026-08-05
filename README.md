@@ -28,8 +28,12 @@ La contrainte peut être surchargée au besoin, tout en laissant `uv` vérifier 
 compatibilité avec vLLM dans la même résolution :
 
 ```bash
-TRANSFORMERS_SPEC='transformers>=4.57.1,<5' ./install.sh
+TRANSFORMERS_SPEC='transformers>=5.0.0' ./install.sh
 ```
+
+Ne pas limiter Transformers à une version antérieure à 5 pour un checkpoint
+`ministral3` : les versions 4.x ne déclarent pas cette architecture. Le lanceur
+affiche la contrainte effectivement utilisée au début de l'installation.
 
 ## Configuration minimale
 
