@@ -13,6 +13,27 @@ cp .env.example .env
 ```
 
 Le venv est créé avec Python 3.12 dans `~/venv/<nom-du-projet>` par défaut.
+L'installation impose aussi une version récente de Transformers afin de prendre
+en charge les checkpoints dont l'architecture est déclarée comme `ministral3`,
+notamment `nvidia/Nemotron-3-Embed-1B-BF16`.
+
+Pour réparer un environnement créé avec une ancienne version de Transformers,
+relancer simplement l'installation :
+
+```bash
+./install.sh
+```
+
+La contrainte peut être surchargée au besoin, tout en laissant `uv` vérifier sa
+compatibilité avec vLLM dans la même résolution :
+
+```bash
+TRANSFORMERS_SPEC='transformers>=5.0.0' ./install.sh
+```
+
+Ne pas limiter Transformers à une version antérieure à 5 pour un checkpoint
+`ministral3` : les versions 4.x ne déclarent pas cette architecture. Le lanceur
+affiche la contrainte effectivement utilisée au début de l'installation.
 
 ## Configuration minimale
 
