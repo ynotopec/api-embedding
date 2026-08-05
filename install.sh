@@ -7,11 +7,17 @@ VENV_DIR="${VENV_DIR:-$HOME/venv/$PROJECT_NAME}"
 
 VLLM_VERSION="${VLLM_VERSION:-0.19.1}"
 CUDA_VERSION="${CUDA_VERSION:-130}"
+# Ministral 3 checkpoints (including Nemotron 3 Embed) need the architecture
+# registration shipped in recent Transformers releases. Resolve it in the same
+# transaction as vLLM so uv cannot leave an older, importable-but-incompatible
+# Transformers installation in an existing venv.
+TRANSFORMERS_SPEC="${TRANSFORMERS_SPEC:-transformers>=4.57.1,<5}"
 
 echo "==> Project:      $PROJECT_DIR"
 echo "==> Project name: $PROJECT_NAME"
 echo "==> Venv:         $VENV_DIR"
 echo "==> vLLM:         $VLLM_VERSION + cu$CUDA_VERSION"
+echo "==> Transformers: $TRANSFORMERS_SPEC"
 
 need_cmd() {
   command -v "$1" >/dev/null 2>&1
@@ -120,6 +126,7 @@ export UV_TORCH_BACKEND="cu${CUDA_VERSION}"
 
 uv pip install -U \
   "$VLLM_WHEEL" \
+  "$TRANSFORMERS_SPEC" \
   --torch-backend "cu${CUDA_VERSION}" \
   --index-strategy unsafe-best-match \
   --prerelease allow \
