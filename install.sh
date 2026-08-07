@@ -121,7 +121,10 @@ uv pip install -U pip setuptools wheel packaging
 
 echo "==> Installing vLLM CUDA ${CUDA_VERSION}..."
 export UV_INDEX_STRATEGY=unsafe-best-match
-export UV_PRERELEASE=allow
+# Prefer stable releases. Pre-releases remain eligible for other dependencies
+# only when no stable candidate exists or a requirement explicitly requests one;
+# the version check below rejects a pre-release of Transformers itself.
+export UV_PRERELEASE=if-necessary-or-explicit
 export UV_TORCH_BACKEND="cu${CUDA_VERSION}"
 
 uv pip install -U \
@@ -130,7 +133,7 @@ uv pip install -U \
   "huggingface_hub[cli]" \
   --torch-backend "cu${CUDA_VERSION}" \
   --index-strategy unsafe-best-match \
-  --prerelease allow \
+  --prerelease if-necessary-or-explicit \
   --extra-index-url "https://download.pytorch.org/whl/cu${CUDA_VERSION}" \
   --extra-index-url "https://pypi.org/simple"
 
@@ -164,6 +167,7 @@ rm -f "$PIP_CHECK_OUTPUT"
 echo "==> Checking dependency versions..."
 python - <<'PY'
 import importlib.metadata as md
+from packaging.version import Version
 
 packages = [
     "torch",
@@ -185,6 +189,14 @@ for pkg in packages:
         print(f"{pkg}: {md.version(pkg)}")
     except md.PackageNotFoundError:
         print(f"{pkg}: not installed")
+
+transformers_version = Version(md.version("transformers"))
+if transformers_version.is_prerelease:
+    raise SystemExit(
+        "ERROR: the resolved Transformers version is a pre-release: "
+        f"{transformers_version}. Set TRANSFORMERS_SPEC to an explicit stable "
+        "version compatible with vLLM."
+    )
 PY
 
 echo "==> Checking Python imports..."
