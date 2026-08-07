@@ -44,9 +44,30 @@ MODEL_ID=BAAI/bge-m3
 ```
 
 Il peut s'agir d'un identifiant Hugging Face ou d'un chemin local accepté par
-vLLM. `API_KEY`, `MODEL_ALIAS` et `SERVED_MODEL_NAME` sont optionnels.
-`SERVED_MODEL_NAME` est prioritaire sur `MODEL_ALIAS`; sans alias, vLLM expose
-directement `MODEL_ID`.
+vLLM. `API_KEY`, `MODEL_ALIAS` et `SERVED_MODEL_NAME` sont optionnels. Lorsque
+`SERVED_MODEL_NAME` et `MODEL_ALIAS` sont tous les deux renseignés, le lanceur
+les transmet tous les deux à vLLM (dans cet ordre) : les clients peuvent donc
+utiliser l'un ou l'autre. Si les deux valeurs sont identiques, le nom n'est
+transmis qu'une fois. Sans aucun nom, vLLM expose directement `MODEL_ID`.
+
+Par exemple :
+
+```dotenv
+MODEL_ID=Forturne/bge-m3-FP8
+SERVED_MODEL_NAME=BAAI/bge-m3
+MODEL_ALIAS=bge-m3
+```
+
+La route `/v1/models` expose alors `BAAI/bge-m3` et `bge-m3`. Les identifiants
+commençant par `modelperm-` éventuellement présents dans la réponse sont des
+identifiants de permission imbriqués, et non des noms de modèles. Pour ne
+lister que les modèles de premier niveau :
+
+```bash
+curl -s http://127.0.0.1:8001/v1/models \
+  -H 'Authorization: Bearer change-me' \
+  | jq -r '.data[].id'
+```
 
 Le serveur se lance ensuite avec :
 
