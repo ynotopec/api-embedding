@@ -152,3 +152,27 @@ Hugging Face utilise donc son répertoire de cache par défaut, sauf si ces
 variables sont déjà configurées dans l’environnement. `HF_HUB_ENABLE_HF_TRANSFER`
 et `TOKENIZERS_PARALLELISM` peuvent aussi être surchargées. Pour un modèle privé,
 configurer aussi `HF_TOKEN`.
+
+Le lanceur ne modifie pas `TRANSFORMERS_VERBOSITY` : les avertissements restent
+visibles par défaut. Il est déconseillé de les masquer globalement avant d'avoir
+vérifié que la configuration du modèle est bien interprétée.
+
+L'avertissement indiquant que `apply_yarn_scaling` est inconnu ne signifie pas
+que YaRN est entièrement désactivé. `rope_type='yarn'` est reconnu séparément et
+sélectionne l'implémentation YaRN ; ce sont ses paramètres reconnus (notamment
+`factor`, `beta_fast` et `beta_slow`) qui pilotent alors le calcul. En revanche,
+la clé supplémentaire `apply_yarn_scaling` n'est pas interprétée par cette
+version de Transformers. Il faut donc vérifier sa valeur dans le `config.json`
+du modèle :
+
+- si elle vaut `true`, YaRN reste sélectionné par `rope_type='yarn'` ;
+- si elle vaut `false`, ne pas ignorer l'avertissement sans consulter le code ou
+  la documentation du modèle, car Transformers pourrait appliquer YaRN alors
+  que cette extension demandait de le désactiver.
+
+Après cette vérification seulement, les messages Transformers peuvent être
+masqués explicitement si nécessaire :
+
+```dotenv
+TRANSFORMERS_VERBOSITY=error
+```
