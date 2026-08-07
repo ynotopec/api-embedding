@@ -24,8 +24,12 @@ relancer simplement l'installation :
 ./install.sh
 ```
 
-La contrainte peut être surchargée au besoin, tout en laissant `uv` vérifier sa
-compatibilité avec vLLM dans la même résolution :
+Par défaut, `uv` met à jour Transformers vers la version stable la plus récente
+qui satisfait `transformers>=5.0.0` et reste compatible avec vLLM. L'installation
+refuse une préversion de Transformers afin de ne pas introduire une version de
+développement en production. La contrainte peut être surchargée au besoin, tout
+en laissant `uv`
+vérifier sa compatibilité avec vLLM dans la même résolution :
 
 ```bash
 TRANSFORMERS_SPEC='transformers>=5.0.0' ./install.sh
@@ -152,3 +156,31 @@ Hugging Face utilise donc son répertoire de cache par défaut, sauf si ces
 variables sont déjà configurées dans l’environnement. `HF_HUB_ENABLE_HF_TRANSFER`
 et `TOKENIZERS_PARALLELISM` peuvent aussi être surchargées. Pour un modèle privé,
 configurer aussi `HF_TOKEN`.
+
+Le lanceur ne modifie pas `TRANSFORMERS_VERBOSITY` : les avertissements restent
+visibles par défaut. Il est déconseillé de les masquer globalement avant d'avoir
+vérifié que la configuration du modèle est bien interprétée.
+
+L'avertissement indiquant que `apply_yarn_scaling` est inconnu ne signifie pas
+que YaRN est entièrement désactivé. `rope_type='yarn'` est reconnu séparément et
+sélectionne l'implémentation YaRN ; ce sont ses paramètres reconnus (notamment
+`factor`, `beta_fast` et `beta_slow`) qui pilotent alors le calcul. En revanche,
+la clé supplémentaire `apply_yarn_scaling` n'est pas interprétée par cette
+version de Transformers. Il ne faut pas déduire du nom de cette clé qu'une
+version plus récente la prendra nécessairement en charge : il s'agit d'une
+extension de configuration du modèle, pas d'un paramètre YaRN standard de
+Transformers. Relancer `./install.sh` permet de vérifier le comportement avec la
+dernière version stable compatible ; si l'avertissement subsiste, il faut
+vérifier sa valeur dans le `config.json` du modèle :
+
+- si elle vaut `true`, YaRN reste sélectionné par `rope_type='yarn'` ;
+- si elle vaut `false`, ne pas ignorer l'avertissement sans consulter le code ou
+  la documentation du modèle, car Transformers pourrait appliquer YaRN alors
+  que cette extension demandait de le désactiver.
+
+Après cette vérification seulement, les messages Transformers peuvent être
+masqués explicitement si nécessaire :
+
+```dotenv
+TRANSFORMERS_VERBOSITY=error
+```
