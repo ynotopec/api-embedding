@@ -17,7 +17,7 @@ fi
 
 MODEL_ID="${MODEL_ID:-}"
 MODEL_ALIAS="${MODEL_ALIAS:-}"
-SERVED_MODEL_NAME="${SERVED_MODEL_NAME:-$MODEL_ALIAS}"
+SERVED_MODEL_NAME="${SERVED_MODEL_NAME:-}"
 
 if [[ -z "$MODEL_ID" ]]; then
   echo "ERROR: MODEL_ID is required."
@@ -57,8 +57,15 @@ ARGS=(
   --port "$PORT"
 )
 
+SERVED_MODEL_NAMES=()
 if [[ -n "$SERVED_MODEL_NAME" ]]; then
-  ARGS+=(--served-model-name "$SERVED_MODEL_NAME")
+  SERVED_MODEL_NAMES+=("$SERVED_MODEL_NAME")
+fi
+if [[ -n "$MODEL_ALIAS" && "$MODEL_ALIAS" != "$SERVED_MODEL_NAME" ]]; then
+  SERVED_MODEL_NAMES+=("$MODEL_ALIAS")
+fi
+if (( ${#SERVED_MODEL_NAMES[@]} > 0 )); then
+  ARGS+=(--served-model-name "${SERVED_MODEL_NAMES[@]}")
 fi
 
 if [[ -n "$API_KEY" ]]; then
@@ -99,7 +106,7 @@ echo "==> Starting vLLM embeddings"
 echo "    project: $PROJECT_NAME"
 echo "    venv:    $VENV_DIR"
 echo "    model:   $MODEL_ID"
-echo "    name:    ${SERVED_MODEL_NAME:-$MODEL_ID}"
+echo "    names:   ${SERVED_MODEL_NAMES[*]:-$MODEL_ID}"
 echo "    url:     http://$HOST:$PORT"
 echo "    api:     POST /v1/embeddings"
 echo
